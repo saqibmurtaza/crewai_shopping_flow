@@ -1,0 +1,41 @@
+search_products:
+  description: >
+    Search for furniture products based on user input and return the best matches.
+  expected_output: >
+    A list of relevant furniture products along with their details.
+  agent: search_agent
+
+recommend_products:
+  description: >
+    Provide product recommendations based on user input and preferences.
+  expected_output: >
+    A curated list of recommended furniture products with brief descriptions.
+  agent: recommendation_agent
+
+display_products:
+  description: >
+    Present search results in a user-friendly format and allow filtering/sorting.
+  expected_output: >
+    A well-structured presentation of search results, enabling interactive exploration.
+  agent: interaction_agent
+
+manage_cart:
+  description: >
+    Handle add/remove actions for products in the cart and wishlist.
+  expected_output: >
+    An updated cart or wishlist reflecting user selections.
+  agent: cart_manager
+
+process_checkout:
+  description: >
+    Guide the user through the checkout process and ensure a successful transaction.
+  expected_output: >
+    A completed order confirmation and successful payment guidance.
+  agent: checkout_agent
+
+handle_support:
+  description: >
+    Answer common questions and assist users with any shopping or order-related issues.
+  expected_output: >
+    Helpful responses addressing user concerns and guiding them to solutions.
+  agent: support_agent
