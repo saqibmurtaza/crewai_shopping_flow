@@ -2,6 +2,7 @@
 from pydantic import BaseModel
 from crewai.flow import Flow, listen, start
 from crewai_shopping_flow.crews.shopping_crew.shopping_crew import ShoppingCrew
+from crewai_shopping_flow.crews.shopping_crew.llm_config import llm
 import os
 import ssl
 import certifi

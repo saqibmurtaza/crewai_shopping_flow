@@ -22,7 +22,7 @@ class SearchTool(BaseTool):
     def _run(self, query: str) -> str:
         try:
             # Connect to Google Sheets
-            gc = gspread.service_account(filename='credentials.json')
+            gc = gspread.service_account(filename='gc.json')
             sheet = gc.open("FurnitureProducts").sheet1
             
             # Fetch all records
@@ -32,13 +32,13 @@ class SearchTool(BaseTool):
             matching_products = [p for p in products if query.lower() in p['name'].lower()]
             
             if not matching_products:
-                    return json.dumps({"products": [], "message": "No matching products found."})
+                return json.dumps({"products": [], "message": "No matching products found."})
                 
-                # Format results in JSON
-                return json.dumps({
-                    "products": matching_products,
-                    "message": "Products found successfully"
-                })
+            # Format results in JSON
+            return json.dumps({
+                "products": matching_products,
+                "message": "Products found successfully"
+            })
         except Exception as e:
             return json.dumps({
                 "products": [],
@@ -60,9 +60,9 @@ class RecommendationTool(BaseTool):
 
     def recommend_by_category(self, category_query: str) -> str:
         try:
-        # Connect to Google Sheets
-        gc = gspread.service_account(filename='credentials.json')
-        sheet = gc.open("FurnitureProducts").sheet1
+            # Connect to Google Sheets
+            gc = gspread.service_account(filename='gc.json')
+            sheet = gc.open("FurnitureProducts").sheet1
             products = sheet.get_all_records()
         except Exception as e:
             return f"Error fetching products from Google Sheets: {str(e)}"
