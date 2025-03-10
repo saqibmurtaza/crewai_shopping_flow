@@ -3,13 +3,8 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from crewai import LLM
 import gspread
-
-# Initialize LLM with Gemini Pro
-llm = LLM(
-    model="gemini/gemini-1.5-flash",
-    temperature=0
-)
-
+from crewai_shopping_flow.crews.shopping_crew.llm_config import llm
+import json
 
 class SearchToolInput(BaseModel):
     """Input schema for SearchTool."""
@@ -18,95 +13,86 @@ class SearchToolInput(BaseModel):
 
 class SearchTool(BaseTool):
     name: str = "Furniture Search Tool"
-    description: (
+    description: str = (
         "A tool to search for furniture products from a Google Sheet based on user queries. "
         "It retrieves relevant products and returns their details."
     )
     args_schema: Type[BaseModel] = SearchToolInput
 
     def _run(self, query: str) -> str:
-        # Connect to Google Sheets
-        gc = gspread.service_account(filename='credentials.json')
-        sheet = gc.open("FurnitureProducts").sheet1
-        
-        # Fetch all records
-        products = sheet.get_all_records()
-        
-        # Search for matching products
-        matching_products = [p for p in products if query.lower() in p['name'].lower()]
-        
-        if not matching_products:
-            return "No matching products found."
-        
-        # Format results
-        results = "\n".join([f"{p['name']} - {p['price']}" for p in matching_products])
-        return f"Found products:\n{results}"
-
-
-class RecommendationToolInput(BaseModel):
-    """Input schema for RecommendationTool."""
-    
-    user_preference: str = Field(..., description="User preferences or past selections for recommendations.")
-
-class RecommendationTool(BaseTool):
-    name: str = "Furniture Recommendation Tool"
-    description: (
-        "A tool to suggest the best furniture products based on user preferences and available stock. "
-        "It ensures recommendations are relevant by selecting from the current inventory."
-    )
-    args_schema: Type[BaseModel] = RecommendationToolInput
-
-    def _run(self, user_preference: str) -> str:
-        
         try:
             # Connect to Google Sheets
             gc = gspread.service_account(filename='credentials.json')
             sheet = gc.open("FurnitureProducts").sheet1
             
-            # Fetch all available product records
+            # Fetch all records
             products = sheet.get_all_records()
-            available_products = [p for p in products if p.get("available", True)]
+            
+            # Search for matching products
+            matching_products = [p for p in products if query.lower() in p['name'].lower()]
+            
+            if not matching_products:
+                    return json.dumps({"products": [], "message": "No matching products found."})
+                
+                # Format results in JSON
+                return json.dumps({
+                    "products": matching_products,
+                    "message": "Products found successfully"
+                })
+        except Exception as e:
+            return json.dumps({
+                "products": [],
+                "error": str(e)
+            })
+
+
+class RecommendationToolInput(BaseModel):
+    """Input schema for RecommendationTool."""
+    
+    user_preference: str = Field(..., description="User preference for furniture products.")
+
+class RecommendationTool(BaseTool):
+    name: str = "Furniture Recommendation Tool"
+    description: str = (
+        "A tool to suggest the best furniture products by category based on available stock."
+    )
+    args_schema: Type[BaseModel] = RecommendationToolInput
+
+    def recommend_by_category(self, category_query: str) -> str:
+        try:
+        # Connect to Google Sheets
+        gc = gspread.service_account(filename='credentials.json')
+        sheet = gc.open("FurnitureProducts").sheet1
+            products = sheet.get_all_records()
         except Exception as e:
             return f"Error fetching products from Google Sheets: {str(e)}"
-        
-        if not available_products:
-            return "No available products for recommendation."
-        
-        # Use Gemini AI to generate personalized recommendations from available products
-        prompt = (
-            f"Based on the following user preference: {user_preference}, "
-            "suggest the best matching furniture products from this list: "
-            f"{[p['name'] for p in available_products]}"
-        )
-        
-        try:
-            response = llm.generate(prompt)
-            recommendations = response.text if response and hasattr(response, 'text') else "No recommendations available."
-        except Exception as e:
-            return f"Error generating recommendations: {str(e)}"
-        
-        return f"Recommended products:\n{recommendations}"
 
-class InteractionToolInput(BaseModel):
-    """Input schema for InteractionTool."""
-    
-    user_message: str = Field(..., description="User input message for interaction.")
+        # Filter products by category (case-insensitive)
+        matching_products = [
+            product for product in products
+            if category_query.lower() in product.get('category', '').lower()
+        ]
+        
+        if not matching_products:
+            return {
+                "data": [],
+                "formatted": "No furniture products found in the database."
+            }
+        
+        # Format the recommendations
+        # formatted_recommendations = "\n".join(
+        #     [f"{product.get('name', 'N/A')} - ${product.get('price', 'N/A')}" for product in matching_products]
+        # )
+        
+        # return f"Recommended products in the '{category_query}' category:\n{formatted_recommendations}"
+        return {
+        "data": matching_products
+        }
 
-class InteractionTool(BaseTool):
-    name: str = "User Interaction Tool"
-    description: (
-        "A tool that enables interaction with the user, answering queries, providing shopping assistance, "
-        "and guiding them through the shopping process using natural language."
-    )
-    args_schema: Type[BaseModel] = InteractionToolInput
+    def _run(self, user_preference: str) -> str:
+        # For a simple category-based recommendation, treat the user preference as the category query.
+        return self.recommend_by_category(user_preference)
 
-    def _run(self, user_message: str) -> str:
-        try:
-            # Generate response using Gemini Pro
-            response = llm.generate(user_message)
-            return response if response else "I couldn't understand your request. Could you please rephrase?"
-        except Exception as e:
-            return f"Error processing user interaction: {str(e)}"
         
 class CartManagerToolInput(BaseModel):
     """Input schema for CartManagerTool."""
@@ -117,7 +103,7 @@ class CartManagerToolInput(BaseModel):
 
 class CartManagerTool(BaseTool):
     name: str = "Shopping Cart Manager"
-    description: (
+    description: str = (
         "A tool that allows users to manage their shopping cart by adding, removing, viewing items, "
         "or proceeding to checkout."
     )
@@ -147,7 +133,7 @@ class CheckoutToolInput(BaseModel):
 
 class CheckoutTool(BaseTool):
     name: str = "Checkout Manager"
-    description: (
+    description: str = (
         "A tool that assists users in completing their purchase by processing payments, "
         "handling shipping details, and finalizing the checkout process."
     )
@@ -174,7 +160,7 @@ class SupportToolInput(BaseModel):
 
 class SupportTool(BaseTool):
     name: str = "Customer Support Assistant"
-    description: (
+    description: str = (
         "A tool that assists users with customer support inquiries, providing help on orders, "
         "returns, refunds, product details, and general assistance."
     )
