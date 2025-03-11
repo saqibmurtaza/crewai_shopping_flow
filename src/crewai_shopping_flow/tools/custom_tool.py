@@ -1,17 +1,19 @@
-import json
-import gspread
-import os
-from pydantic import BaseModel, Field
 from typing import Type
 from crewai.tools import BaseTool
+from pydantic import BaseModel, Field
+from crewai import LLM
+import gspread, os
 from crewai_shopping_flow.crews.shopping_crew.llm_config import llm
+import json
 
 # Get the project root directory
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 CREDENTIALS_PATH = os.path.join(PROJECT_ROOT, "gc.json")
 
+
 class SearchToolInput(BaseModel):
     """Input schema for SearchTool."""
+    
     query: str = Field(..., description="User search query for furniture products.")
 
 class SearchTool(BaseTool):
@@ -24,13 +26,20 @@ class SearchTool(BaseTool):
 
     def _run(self, query: str) -> str:
         try:
+            # Connect to Google Sheets
             gc = gspread.service_account(filename=CREDENTIALS_PATH)
             sheet = gc.open("FurnitureProducts").sheet1
+            
+            # Fetch all records
             products = sheet.get_all_records()
-            # Use 'name' as the key consistently.
+            
+            # Search for matching products
             matching_products = [p for p in products if query.lower() in p['name'].lower()]
+            
             if not matching_products:
                 return json.dumps({"products": [], "message": "No matching products found."})
+                
+            # Format results in JSON
             return json.dumps({
                 "products": matching_products,
                 "message": "Products found successfully"
@@ -41,8 +50,10 @@ class SearchTool(BaseTool):
                 "error": str(e)
             })
 
+
 class RecommendationToolInput(BaseModel):
     """Input schema for RecommendationTool."""
+    
     user_preference: str = Field(..., description="User preference for furniture products.")
 
 class RecommendationTool(BaseTool):
@@ -52,25 +63,40 @@ class RecommendationTool(BaseTool):
     )
     args_schema: Type[BaseModel] = RecommendationToolInput
 
-    def recommend_by_category(self, category_query: str) -> dict:
+    def recommend_by_category(self, category_query: str) -> str:
         try:
+            # Connect to Google Sheets
             gc = gspread.service_account(filename=CREDENTIALS_PATH)
             sheet = gc.open("FurnitureProducts").sheet1
             products = sheet.get_all_records()
         except Exception as e:
-            return {"data": [], "error": str(e)}
+            return f"Error fetching products from Google Sheets: {str(e)}"
 
+        # Filter products by category (case-insensitive)
         matching_products = [
             product for product in products
             if category_query.lower() in product.get('category', '').lower()
         ]
+        
         if not matching_products:
-            return {"data": [], "formatted": "No furniture products found in the database."}
-        return {"data": matching_products}
+            return {
+                "data": [],
+                "formatted": "No furniture products found in the database."
+            }
+        
+        # Format the recommendations
+        # formatted_recommendations = "\n".join(
+        #     [f"{product.get('name', 'N/A')} - ${product.get('price', 'N/A')}" for product in matching_products]
+        # )
+        
+        # return f"Recommended products in the '{category_query}' category:\n{formatted_recommendations}"
+        return {
+        "data": matching_products
+        }
 
     def _run(self, user_preference: str) -> str:
-        result = self.recommend_by_category(user_preference)
-        return json.dumps(result)
+        # For a simple category-based recommendation, treat the user preference as the category query.
+        return self.recommend_by_category(user_preference)
 
         
 class CartManagerToolInput(BaseModel):

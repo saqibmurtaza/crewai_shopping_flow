@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from crewai.flow import Flow, start, listen
 from crewai_shopping_flow.crews.shopping_crew.shopping_crew import ShoppingCrew
 from crewai_shopping_flow.crews.shopping_crew.llm_config import llm
-
 class ShoppingState(BaseModel):
     user_query: str = ""
     search_results: list = []
@@ -23,14 +22,15 @@ class ShoppingFlow(Flow[ShoppingState]):
 
     @listen(start_shopping)
     async def search_products(self):
-        result = ShoppingCrew().crew().kickoff(inputs={
-            "query": self.state.user_query,
-            "user_preference": self.state.user_query
-        })
+        result = ShoppingCrew().crew().kickoff(
+            inputs={"query": self.state.user_query,
+            "user_preference": self.state.user_query}
+        )
         print("Raw search results:", result.raw)
         try:
             parsed = json.loads(result.raw)
             self.state.search_results = parsed.get("products", [])
+            # Initialize recommendations from the search results:
             self.state.recommendations = self.state.search_results
         except Exception as e:
             print("Error parsing search results:", e)
