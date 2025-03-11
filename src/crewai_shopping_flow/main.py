@@ -4,16 +4,44 @@ from pydantic import BaseModel
 from crewai.flow import Flow, start, listen
 from crewai_shopping_flow.crews.shopping_crew.shopping_crew import ShoppingCrew
 from crewai_shopping_flow.crews.shopping_crew.llm_config import llm
+
+class CartItem(BaseModel):
+    product: dict
+    quantity: int = 1
+
 class ShoppingState(BaseModel):
     user_query: str = ""
     search_results: list = []
     recommendations: list = []
-    previous_results: list = []  # Add this to keep track of previous results
-    cart: list = []
+    previous_results: list = []
+    cart: list[CartItem] = []  # Changed to use CartItem
     checkout_status: str = ""
 
+    def add_to_cart(self, product: dict) -> tuple[bool, str]:
+        # Check if item already exists in cart
+        for cart_item in self.cart:
+            if cart_item.product.get('name') == product.get('name'):
+                cart_item.quantity += 1
+                return True, f"Increased quantity of {product.get('name')} in your cart to {cart_item.quantity}."
+        # If item doesn't exist, add it
+        self.cart.append(CartItem(product=product))
+        return True, f"Added {product.get('name')} to your cart."
+
+    def update_cart_quantity(self, product_name: str, quantity: int) -> tuple[bool, str]:
+        for cart_item in self.cart:
+            if cart_item.product.get('name').lower() == product_name.lower():
+                if quantity <= 0:
+                    self.cart.remove(cart_item)
+                    return True, f"Removed {cart_item.product.get('name')} from your cart."
+                cart_item.quantity = quantity
+                return True, f"Updated quantity of {cart_item.product.get('name')} to {quantity}."
+        return False, "Product not found in cart."
+
+    def get_cart_total(self) -> float:
+        return sum(float(item.product.get('price', 0)) * item.quantity for item in self.cart)
+
 class ShoppingFlow(Flow[ShoppingState]):
-    llm = llm  # Your LLM instance
+    llm = llm
 
     @start()
     async def start_shopping(self):
@@ -195,14 +223,14 @@ class ShoppingFlow(Flow[ShoppingState]):
                     None
                 )
                 if matching_item:
-                    self.state.cart.append(matching_item)
+                    self.state.cart.append(CartItem(product=matching_item))
                     await cl.Message(content=f"{matching_item.get('name')} has been added to your cart.").send()
                     # Show cart and available options
                     cart_str = "\nYour cart contains:\n"
                     total = 0
                     for prod in self.state.cart:
-                        price = prod.get('price', 0)
-                        cart_str += f"- {prod.get('name', 'N/A')} | Price: ${price}\n"
+                        price = prod.product.get('price', 0)
+                        cart_str += f"- {prod.product.get('name', 'N/A')} | Price: ${price}\n"
                         total += float(price)
                     cart_str += f"\nTotal: ${total:.2f}"
                     await cl.Message(content=cart_str).send()
@@ -224,19 +252,60 @@ class ShoppingFlow(Flow[ShoppingState]):
             )
             await cl.Message(content=prompt).send()
             return
+        elif user_action.startswith(("update", "remove")) or user_action == "clear cart":
+            await self.handle_cart_action(user_action, message)
         elif "view cart" in user_action:
-            if self.state.cart:
-                cart_str = "Your cart contains:\n"
-                for prod in self.state.cart:
-                    cart_str += f"- {prod.get('name', 'N/A')} | Price: ${prod.get('price', 'N/A')}\n"
-                await cl.Message(content=cart_str).send()
-            else:
-                await cl.Message(content="Your cart is empty.").send()
+            cart_message = await self.format_cart_message()
+            await cl.Message(content=cart_message).send()
         elif "checkout" in user_action:
             self.state.checkout_status = "Completed"
             await cl.Message(content="Checkout completed successfully!").send()
         else:
             await cl.Message(content="I'm sorry, I didn't understand that. Please try again.").send()
+
+    async def format_cart_message(self) -> str:
+        if not self.state.cart:
+            return "Your cart is empty."
+        
+        cart_str = "🛒 Your Cart:\n"
+        total = 0
+        for item in self.state.cart:
+            price = float(item.product.get('price', 0))
+            item_total = price * item.quantity
+            cart_str += (f"- {item.product.get('name', 'N/A')} | "
+                        f"Price: ${price} | Quantity: {item.quantity} | "
+                        f"Subtotal: ${item_total:.2f}\n")
+            total = self.state.get_cart_total()
+        cart_str += f"\n💰 Total: ${total:.2f}"
+        
+        cart_str += "\n\n📝 Cart Management Options:\n"
+        cart_str += "- Update quantity: Type 'update <product name> <quantity>'\n"
+        cart_str += "- Remove item: Type 'remove <product name>'\n"
+        cart_str += "- Clear cart: Type 'clear cart'"
+        
+        return cart_str
+
+    async def handle_cart_action(self, action: str, message: cl.Message):
+        parts = action.split()
+        if action.startswith("update") and len(parts) >= 3:
+            product_name = " ".join(parts[1:-1])
+            try:
+                quantity = int(parts[-1])
+                success, msg = self.state.update_cart_quantity(product_name, quantity)
+                await cl.Message(content=msg).send()
+                if success:
+                    await cl.Message(content=await self.format_cart_message()).send()
+            except ValueError:
+                await cl.Message(content="Please provide a valid quantity number.").send()
+        elif action.startswith("remove"):
+            product_name = " ".join(parts[1:])
+            success, msg = self.state.update_cart_quantity(product_name, 0)
+            await cl.Message(content=msg).send()
+            if success:
+                await cl.Message(content=await self.format_cart_message()).send()
+        elif action == "clear cart":
+            self.state.cart = []
+            await cl.Message(content="Cart has been cleared.").send()
 
 # --- Chainlit Handlers (Outside the Class) ---
 
