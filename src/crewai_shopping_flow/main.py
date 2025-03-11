@@ -1,32 +1,9 @@
-#!/usr/bin/env python
+import chainlit as cl
+import json
 from pydantic import BaseModel
-from crewai.flow import Flow, listen, start
+from crewai.flow import Flow, start, listen
 from crewai_shopping_flow.crews.shopping_crew.shopping_crew import ShoppingCrew
 from crewai_shopping_flow.crews.shopping_crew.llm_config import llm
-import chainlit as cl
-import os, ssl, certifi, urllib3, logging
-import json
-
-# Disable OpenTelemetry export
-os.environ["OTEL_PYTHON_DISABLED"] = "true"
-# or alternatively
-os.environ["OTEL_SDK_DISABLED"] = "true"
-
-os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
-
-os.environ['PYTHONHTTPSVERIFY'] = '0'
-os.environ['CURL_CA_BUNDLE'] = ''
-
-urllib3.disable_warnings()
-logging.basicConfig(level=logging.DEBUG)
-
-# Create a custom SSL context
-context = ssl.create_default_context()
-context.check_hostname = False
-context.verify_mode = ssl.CERT_NONE
-
-# Configure urllib3 to use the custom context
-urllib3.poolmanager.PoolManager(ssl_context=context)
 
 class ShoppingState(BaseModel):
     user_query: str = ""
@@ -36,191 +13,138 @@ class ShoppingState(BaseModel):
     checkout_status: str = ""
 
 class ShoppingFlow(Flow[ShoppingState]):
-    llm = llm
+    llm = llm  # Your LLM instance
 
     @start()
-    def start_shopping(self):
+    async def start_shopping(self):
         print("Starting shopping assistant")
-        self.state.user_query = input("What are you looking for? ")
-        print("User query:", self.state.user_query)
+        # Optionally initialize state. Here, we leave the query empty.
+        # This method is called once at the beginning.
 
     @listen(start_shopping)
-    def search_products(self):
-        result = (
-            ShoppingCrew()
-            .crew()
-            .kickoff()
-        )
-        # The result will now be properly formatted as JSON
-        print("Search results:", result.raw)
+    async def search_products(self):
+        result = ShoppingCrew().crew().kickoff(inputs={
+            "query": self.state.user_query,
+            "user_preference": self.state.user_query
+        })
+        print("Raw search results:", result.raw)
+        try:
+            parsed = json.loads(result.raw)
+            self.state.search_results = parsed.get("products", [])
+            self.state.recommendations = self.state.search_results
+        except Exception as e:
+            print("Error parsing search results:", e)
         return result.raw
 
     @listen(search_products)
-    def recommend_products(self):
-        result = (
-            ShoppingCrew()
-            .crew()
-            .kickoff(inputs={
-                "user_query": self.state.search_results, 
-                "user_preference": self.state.user_query})
-        )
-        print("Recommendations:", result.json)
-        self.state.recommendations = result.json
+    async def recommend_products(self):
+        # For simplicity, here we assume recommendations mirror search_results.
+        if not self.state.recommendations:
+            self.state.recommendations = self.state.search_results
+        return json.dumps({"products": self.state.recommendations})
 
     async def interaction_agent(self, message: cl.Message):
         """
-        Chainlit-based interaction agent that presents recommendations and allows refinements.
+        The interaction agent handles incoming user messages.
+        If no recommendations exist, the message is treated as a search query.
+        Otherwise, the message is processed as an action command.
         """
-
-        # If recommendations are in JSON string format, parse them
+        # Parse recommendations if necessary
         product_recommendations = self.state.recommendations
         if isinstance(product_recommendations, str):
             try:
                 product_recommendations = json.loads(product_recommendations)
                 if isinstance(product_recommendations, dict):
-                    product_recommendations = product_recommendations.get('products', [])
+                    product_recommendations = product_recommendations.get("products", [])
             except json.JSONDecodeError:
                 await cl.Message(content="Error processing recommendations.").send()
                 return
 
         if not product_recommendations:
-            await cl.Message(content="No product recommendations available. Try refining your search.").send()
-            return
-
-        # Display product recommendations
-        recommendations_str = "Here are some product recommendations:\n"
-        for prod in product_recommendations:
-            if isinstance(prod, dict):
-                recommendations_str += f"- {prod.get('name', 'N/A')} | Price: ${prod.get('price', 'N/A')}\n"
+            # Treat the message as a search query
+            self.state.user_query = message.content.strip()
+            await cl.Message(content=f"Searching for products matching '{self.state.user_query}'...").send()
+            await self.search_products()
+            if not self.state.recommendations:
+                await cl.Message(content="No products found. Please refine your search.").send()
+                return
             else:
-                recommendations_str += f"- {prod}\n"
+                rec_str = "Found products:\n"
+                for prod in self.state.recommendations:
+                    rec_str += f"- {prod.get('name', 'N/A')} | Price: ${prod.get('price', 'N/A')}\n"
+                await cl.Message(content=rec_str).send()
+                prompt = (
+                    "What would you like to do next?\n"
+                    "Type 'refine <query>' to refine your search,\n"
+                    "or 'add <product name>' to add an item to your cart,\n"
+                    "or 'view cart' to see your cart,\n"
+                    "or 'checkout' to proceed to checkout."
+                )
+                await cl.Message(content=prompt).send()
+                return
 
-        await cl.Message(content=recommendations_str).send()
-
-        # Ask user for next action
-        prompt = (
-            "What would you like to do?\n"
-            "1. **Refine search** (e.g., filter by category, sort by price).\n"
-            "2. **Revert to previous selections.**\n"
-            "3. **Add an item to your cart** (provide the product name).\n"
-            "4. **View your cart.**\n"
-            "5. **Proceed to checkout.**\n"
-            "Please enter your choice."
-        )
-        await cl.Message(content=prompt).send()
-
-        user_action_msg = await cl.listen()
-        user_action = user_action_msg.text.lower().strip()
-
-        # Handle sorting
-        if "sort" in user_action:
-            await cl.Message(content="How would you like to sort? (e.g., price, rating)").send()
-            sort_criteria_msg = await cl.listen()
-            sort_criteria = sort_criteria_msg.text.strip().lower()
-            sorted_products = sorted(
-                product_recommendations, key=lambda x: x.get(sort_criteria, 0)
-            )
-            self.state.recommendations = sorted_products  # Update state with sorted list
-            sorted_str = "Here are the sorted results:\n"
-            for prod in sorted_products:
-                sorted_str += f"- {prod['product_name']} | Price: ${prod['price']}\n"
-            await cl.Message(content=sorted_str).send()
-
-        # Handle filtering
-        elif "filter" in user_action:
-            await cl.Message(content="What filter would you like to apply? (e.g., category: Living Room)").send()
-            filter_criteria_msg = await cl.listen()
-            filter_criteria = filter_criteria_msg.text.strip()
-            try:
-                key, value = filter_criteria.split(":")
-                filtered_products = [
-                    prod for prod in product_recommendations
-                    if str(prod.get(key.strip(), "")).lower() == value.strip().lower()
-                ]
-                self.state.recommendations = filtered_products  # Update state with filtered results
-                filtered_str = "Here are the filtered results:\n"
-                for prod in filtered_products:
-                    filtered_str += f"- {prod['product_name']} | Price: ${prod['price']}\n"
-                await cl.Message(content=filtered_str).send()
-            except ValueError:
-                await cl.Message(content="Filter format error. Use 'key: value'.").send()
-
-        # Handle revert selection
-        elif "revert" in user_action:
-            self.state.recommendations = self.state.search_results  # Reset to original search results
-            await cl.Message(content="Reverted to previous selections.").send()
-
-        # Handle adding to cart
-        elif "add" in user_action and "cart" in user_action:
-            await cl.Message(content="Which product would you like to add to your cart?").send()
-            product_name_msg = await cl.listen()
-            selected_item = product_name_msg.text.strip().lower()
-            matching_item = next(
-                (p for p in product_recommendations if p["product_name"].lower() == selected_item),
-                None
-            )
-            if matching_item:
-                self.state.cart.append(matching_item)
-                await cl.Message(content=f"{matching_item['product_name']} has been added to your cart.").send()
+        # Process the message as an action command
+        user_action = message.content.strip().lower()
+        if user_action.startswith("refine"):
+            # Split the message into parts and join everything after "refine"
+            parts = message.content.split(maxsplit=1)
+            if len(parts) < 2:
+                await cl.Message(content="Please specify what you want to search for after 'refine'.").send()
+                return
+            refined_query = parts[1].strip()
+            self.state.user_query = refined_query
+            await cl.Message(content=f"Refining search for '{refined_query}'...").send()
+            await self.search_products()
+            if self.state.recommendations:
+                rec_str = "Refined product recommendations:\n"
+                for prod in self.state.recommendations:
+                    rec_str += f"- {prod.get('name', 'N/A')} | Price: ${prod.get('price', 'N/A')}\n"
+                await cl.Message(content=rec_str).send()
             else:
-                await cl.Message(content="Sorry, that product is not available.").send()
-
-        # Handle viewing cart
-        elif "view" in user_action and "cart" in user_action:
+                await cl.Message(content="No products match your refined query.").send()
+        elif user_action.startswith("add"):
+            parts = user_action.split(maxsplit=1)
+            if len(parts) < 2:
+                await cl.Message(content="Please specify which product to add.").send()
+            else:
+                prod_name = parts[1].strip()
+                matching_item = next(
+                    (p for p in self.state.recommendations if p.get("name", "").lower() == prod_name.lower()),
+                    None
+                )
+                if matching_item:
+                    self.state.cart.append(matching_item)
+                    await cl.Message(content=f"{matching_item.get('name')} has been added to your cart.").send()
+                else:
+                    await cl.Message(content="Product not found in recommendations.").send()
+        elif "view cart" in user_action:
             if self.state.cart:
                 cart_str = "Your cart contains:\n"
                 for prod in self.state.cart:
-                    cart_str += f"- {prod['product_name']} | Price: ${prod['price']}\n"
+                    cart_str += f"- {prod.get('name', 'N/A')} | Price: ${prod.get('price', 'N/A')}\n"
                 await cl.Message(content=cart_str).send()
             else:
                 await cl.Message(content="Your cart is empty.").send()
-
-        # Handle checkout
         elif "checkout" in user_action:
-            self.state.checkout_status = "Pending"
-            await cl.Message(content="Proceeding to checkout...").send()
-            # You can integrate checkout logic here (e.g., payment API, order processing)
-
+            self.state.checkout_status = "Completed"
+            await cl.Message(content="Checkout completed successfully!").send()
         else:
-            await cl.Message(content="I didn't understand that. Please try again.").send() 
+            await cl.Message(content="I'm sorry, I didn't understand that. Please try again.").send()
 
-    
-   
+# --- Chainlit Handlers (Outside the Class) ---
 
-    # @listen(search_products)
-    # def add_to_cart(self):
-    #     print("Adding products to cart...")
-    #     self.state.cart = self.state.recommendations[:2]  # Simulating adding first 2 items
-    #     print("Items added to cart:", self.state.cart)
-
-    # @listen(add_to_cart)
-    # def proceed_to_checkout(self):
-    #     print("Proceeding to checkout...")
-    #     self.state.checkout_status = "Checkout completed successfully!"
-    #     print(self.state.checkout_status)
-
-
-def kickoff():
-    shopping_flow = ShoppingFlow()
-    shopping_flow.kickoff()
-
-
-def plot():
-    shopping_flow = ShoppingFlow()
-    shopping_flow.plot()
-
-
-# Add these Chainlit handlers outside the class
 @cl.on_chat_start
 async def start():
     flow = ShoppingFlow()
+    await flow.start_shopping()  # Initialize state if necessary.
     cl.user_session.set("flow", flow)
+    await cl.Message(content="Welcome to our furniture store! What are you looking for today?").send()
 
 @cl.on_message
 async def handle_message(message: cl.Message):
     flow = cl.user_session.get("flow")
     await flow.interaction_agent(message)
 
-
 if __name__ == "__main__":
-    kickoff()
+    from crewai.flow import run_flow
+    run_flow(ShoppingFlow())

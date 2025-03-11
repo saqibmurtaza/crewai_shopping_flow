@@ -3,26 +3,21 @@ from crewai.project import CrewBase, agent, crew, task
 from crewai_shopping_flow.tools.custom_tool import (
     SearchTool,
     RecommendationTool,
-    CartManagerTool,
-    CheckoutTool,
-    SupportTool,
+    # Other tools as needed...
 )
 from crewai_shopping_flow.crews.shopping_crew.llm_config import llm
-from .models import SearchResults
+from .models import SearchResults  # Assuming this is defined appropriately
 
 @CrewBase
 class ShoppingCrew:
     """Shopping Crew to assist users from product search to checkout."""
-
     agents_config = "config/agents.yaml"
     tasks_config = "config/tasks.yaml"
     llm = llm
 
     search_tool = SearchTool()
     recommendation_tool = RecommendationTool()
-    # cart_manager_tool = CartManagerTool()
-    # checkout_tool = CheckoutTool()
-    # support_tool = SupportTool()
+    # Other tools commented out for now
 
     @agent
     def search_agent(self) -> Agent:
@@ -49,33 +44,6 @@ class ShoppingCrew:
             verbose=True
         )
 
-    # @agent
-    # def cart_manager(self) -> Agent:
-    #     return Agent(
-    #         config=self.agents_config["cart_manager"],
-    #         llm=self.llm,
-    #         tools=[self.cart_manager_tool],
-    #         verbose=True,
-    #     )
-
-    # @agent
-    # def checkout_agent(self) -> Agent:
-    #     return Agent(
-    #         config=self.agents_config["checkout_agent"],
-    #         llm=self.llm,
-    #         tools=[self.checkout_tool],
-    #         verbose=True,
-    #     )
-
-    # @agent
-    # def support_agent(self) -> Agent:
-    #     return Agent(
-    #         config=self.agents_config["support_agent"],
-    #         llm=self.llm,
-    #         tools=[self.support_tool],
-    #         verbose=True,
-    #     )
-
     @task
     def search_task(self) -> Task:
         return Task(
@@ -99,33 +67,12 @@ class ShoppingCrew:
             output_json=SearchResults
         )
 
-    # @task
-    # def cart_task(self) -> Task:
-    #     return Task(
-    #         config=self.tasks_config["cart_task"],
-    #         agent=self.cart_manager()
-    #     )
-
-    # @task
-    # def checkout_task(self) -> Task:
-    #     return Task(
-    #         config=self.tasks_config["checkout_task"],
-    #         agent=self.checkout_agent()
-    #     )
-
-    # @task
-    # def support_task(self) -> Task:
-    #     return Task(
-    #         config=self.tasks_config["support_task"],
-    #         agent=self.support_agent()
-    #     )
-
     @crew
     def crew(self) -> Crew:
         """Creates the Shopping Crew."""
         return Crew(
             agents=self.agents,  # Automatically created by the @agent decorator
-            tasks=self.tasks,  # Automatically created by the @task decorator
+            tasks=self.tasks,    # Automatically created by the @task decorator
             process=Process.sequential,
             verbose=True,
         )
