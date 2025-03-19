@@ -1,9 +1,9 @@
 import chainlit as cl
 import json
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from crewai.flow import Flow, start, listen
 from crewai_shopping_flow.crews.shopping_crew.shopping_crew import ShoppingCrew
-from crewai_shopping_flow.crews.shopping_crew.llm_config import llm
+from crewai_shopping_flow.crews.shopping_crew.models import SearchResults
 
 class CartItem(BaseModel):
     product: dict
@@ -11,10 +11,10 @@ class CartItem(BaseModel):
 
 class ShoppingState(BaseModel):
     user_query: str = ""
-    search_results: list = []
-    recommendations: list = []
-    previous_results: list = []
-    cart: list[CartItem] = []  # Changed to use CartItem
+    search_results: SearchResults = SearchResults(products=[])
+    recommendations: list = Field(default_factory=list)
+    previous_results: list = Field(default_factory=list)
+    cart: list[CartItem] = Field(default_factory=list)  # Changed to use CartItem
     checkout_status: str = ""
 
     def add_to_cart(self, product: dict) -> tuple[bool, str]:
@@ -41,91 +41,109 @@ class ShoppingState(BaseModel):
         return sum(float(item.product.get('price', 0)) * item.quantity for item in self.cart)
 
 class ShoppingFlow(Flow[ShoppingState]):
-    llm = llm
 
     @start()
     async def start_shopping(self):
         print("Starting shopping assistant")
-        # Optionally initialize state. Here, we leave the query empty.
-        # This method is called once at the beginning.
 
     @listen(start_shopping)
     async def search_products(self):
-        # Store previous results before new search
-        if self.state.recommendations:
-            self.state.previous_results = self.state.recommendations.copy()
-            
-        result = ShoppingCrew().crew().kickoff(
+        # Kick off the search using the crew, passing the user's query.
+        crew_output = ShoppingCrew().crew().kickoff(
             inputs={
-                "query": self.state.user_query,
-                "user_preference": self.state.user_query
+                "query": self.state.user_query
             }
         )
-        try:
-            parsed = json.loads(result.raw)
-            if isinstance(parsed, dict):
-                products = parsed.get("products", [])
-                # Filter for relevant items based on the query
-                query_terms = self.state.user_query.lower().split()
-                relevant_products = [
-                    p for p in products
-                    if any(term in p.get("name", "").lower() or 
-                          term in p.get("description", "").lower() 
-                          for term in query_terms)
-                ]
-                
-                self.state.search_results = relevant_products
-                self.state.recommendations = relevant_products
-
-                if parsed.get("message"):
-                    await cl.Message(content=parsed["message"]).send()
-            else:
-                print("Unexpected response format:", parsed)
-        except Exception as e:
-            print("Error parsing search results:", e)
-            await cl.Message(content="Sorry, I encountered an error processing the search results.").send()
-        return result.raw
-
-    @listen(search_products)
-    async def recommend_products(self):
-        if not self.state.recommendations:
-            self.state.recommendations = self.state.search_results
-
-        if self.state.recommendations:
-            # Organize recommendations by category
-            rec_str = "Here are our recommendations:\n\n"
-            
-            # Show current search results
-            rec_str += "🔍 Current Search Results:\n"
-            for prod in self.state.recommendations:
-                rec_str += f"- {prod.get('name', 'N/A')} | Price: ${prod.get('price', 'N/A')}\n"
-                if prod.get('description'):
-                    rec_str += f"  {prod.get('description')}\n"
-            
-            # Show previous results if they exist and are different
-            if self.state.previous_results:
-                previous_names = {p.get('name') for p in self.state.previous_results}
-                current_names = {p.get('name') for p in self.state.recommendations}
-                if previous_names - current_names:  # If there are unique previous results
-                    rec_str += "\n📌 Previously Viewed Items:\n"
-                    for prod in self.state.previous_results:
-                        if prod.get('name') not in current_names:
-                            rec_str += f"- {prod.get('name', 'N/A')} | Price: ${prod.get('price', 'N/A')}\n"
-            
-            await cl.Message(content=rec_str).send()
-            
-            # Show options to the user
-            prompt = (
-                "What would you like to do?\n"
-                "1. Add an item to cart: Type 'add <product name>'\n"
-                "2. Refine your search: Type 'refine <query>'\n"
-                "3. View your cart: Type 'view cart'\n"
-                "4. Proceed to checkout: Type 'checkout'\n\n"
-                "💡 You can add items from both current and previous results!"
-            )
-            await cl.Message(content=prompt).send()
         
-        return json.dumps({"products": self.state.recommendations})
+        # Accessing the crew output
+        desired_output = None
+
+        for task_output in crew_output.tasks_output:
+            # Get the raw string and remove any markdown code block markers if present
+            raw_str = task_output.raw
+            json_str = raw_str.split("```")[0].strip()
+            
+            try:
+                parsed = json.loads(json_str)
+                # Check if this parsed output contains the desired "products" key
+                if isinstance(parsed, dict) and "products" in parsed:
+                    desired_output = parsed
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        if desired_output:
+            print("Extracted JSON:", json.dumps(desired_output, indent=2))
+        else:
+            print("No valid JSON output with 'products' key was found.")
+        
+        # Update the state with the search results
+        self.state.search_results = desired_output["products"]
+        self.state.recommendations= desired_output["products"]
+        print(f"DEBUG: Search results: {self.state.search_results}")
+        print(f"DEBUG: Recommendations: {self.state.recommendations}")
+                    
+    
+    # @listen(search_products)
+    # async def get_recommendation(self):
+    #     print("Getting recommendations")
+
+    #     # Use the original search results from the CrewAI flow.
+    #     search_results = self.state.search_results
+    #     print(f"DEBUG: Search results: {search_results}")
+
+    #     # extract the category from the search results
+    #     category = search_results[0].get("category", "")
+    #     print(f"DEBUG: Category Query: {category}")
+
+    #     # Prepare a list to collect complementary products.
+    #     complementary_products = []
+
+    #     # search for complementary products based on the category
+    #     comp_query = category
+    
+    #     comp_result = (
+    #         ShoppingCrew()
+    #         .crew()
+    #         .kickoff(inputs={"query": comp_query})
+    #     )
+    #     output = json.loads(comp_result.raw)
+    #     if output.get("products"):
+    #         complementary_products.extend(output["products"])
+    #     print(f"DEBUG: Complementary products: {complementary_products}")
+                        
+    #     # Merge original search results with complementary products, removing duplicates by product name.
+    #     all_products = {prod.get("name"): prod for prod in search_results}
+    #     for prod in complementary_products:
+    #         if prod.get("name") not in all_products:
+    #             all_products[prod.get("name")] = prod
+    #     combined_products = list(all_products.values())
+    #     print(f"DEBUG: Combined products: {combined_products}")
+    #     self.state.recommendations = combined_products
+    
+    #     await cl.Message(content=combined_products).send()
+    #     prompt = (
+    #         "What would you like to do?\n"
+    #         "1. Add an item to cart: Type 'add <product name>'\n"
+    #         "2. Refine your search: Type 'refine <query>'\n"
+    #         "3. View your cart: Type 'view cart'\n"
+    #         "4. Proceed to checkout: Type 'checkout'\n\n"
+    #         "💡 You can add items from both current and previous results!"
+    #     )
+    #     await cl.Message(content=prompt).send()
+        
+    #     prompt = (
+    #         "What would you like to do?\n"
+    #         "1. Add an item to cart: Type 'add <product name>'\n"
+    #         "2. Refine your search: Type 'refine <query>'\n"
+    #         "3. View your cart: Type 'view cart'\n"
+    #         "4. Proceed to checkout: Type 'checkout'\n\n"
+    #         "💡 You can add items from both current and previous results!"
+    #     )
+    #     await cl.Message(content=prompt).send()
+        
+    #     return json.dumps({"products": self.state.recommendations})
+
 
     async def interaction_agent(self, message: cl.Message):
         """
@@ -321,6 +339,16 @@ async def handle_message(message: cl.Message):
     flow = cl.user_session.get("flow")
     await flow.interaction_agent(message)
 
+def kickoff():
+    ShoppingFlow().kickoff()
+
+
 if __name__ == "__main__":
-    from crewai.flow import run_flow
-    run_flow(ShoppingFlow())
+    kickoff()
+
+
+#     from crewai.flow import run_flow
+
+# if __name__ == "__main__":
+#     from crewai.flow import run_flow
+#     run_flow(ShoppingFlow())

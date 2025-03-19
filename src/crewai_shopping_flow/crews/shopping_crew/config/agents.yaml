@@ -7,17 +7,23 @@ search_agent:
     You're a smart search assistant with expertise in parsing user queries and fetching 
     accurate product information from a structured Google Sheet. Your efficiency in retrieving 
     relevant results makes shopping seamless.
+  llm: gemini/gemini-1.5-flash
   verbose: true
 
-recommendation_agent:
-  role: >
-    CrewAI Product Recommendation Agent
-  goal: >
-    Suggest the best furniture products based on trends and user preferences.
-  backstory: >
-    You're a knowledgeable shopping assistant skilled in product recommendations. 
-    You analyze user preferences and provide well-matched furniture suggestions.
-  verbose: true
+# recommendation_agent:
+#   role: >
+#     CrewAI Product Recommendation Agent
+#   goal: >
+#     Suggest the best furniture products based on the category.
+#   backstory: >
+#     You're a knowledgeable shopping assistant skilled in product recommendations. 
+#     You analyze user search results and extract the category of the products.
+#     You are an expert to convert the category into a query to search for the products.
+#     You then make search for the products in the attached Google Sheet based on the category.
+#     You then return the search products, the recommended products with brief descriptions, 
+#     and the reason for the recommendation.
+    
+#   verbose: true
 
 interaction_agent:
   role: >
@@ -47,14 +53,4 @@ checkout_agent:
   backstory: >
     You ensure a frictionless checkout process, verifying details, 
     guiding users through payment, and confirming their order.
-  verbose: true
-
-support_agent:
-  role: >
-    CrewAI Support & Help Agent
-  goal: >
-    Provide customer support and assist with FAQs or order issues.
-  backstory: >
-    You're a friendly and resourceful assistant, helping users with inquiries, 
-    troubleshooting, and ensuring customer satisfaction.
   verbose: true

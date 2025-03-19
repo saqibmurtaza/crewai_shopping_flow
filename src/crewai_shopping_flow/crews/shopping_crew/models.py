@@ -1,11 +1,14 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
+
 
 class Product(BaseModel):
     name: str
     price: float
-    description: str = ""
+    category: Optional[str] = None
+    description: Optional[str] = None
 
 class SearchResults(BaseModel):
     products: List[Product]
-    message: str = "" 
+    message: Optional[str] = None
+

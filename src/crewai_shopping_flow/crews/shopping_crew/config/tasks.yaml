@@ -1,33 +1,33 @@
 search_products:
   description: >
-    cross check with attached google sheet before generating the final answer, and 
-    do not add or hallucinate additional product names or details.
-    If a matching product is found, return its details in a formatted list
-    (e.g., product name and price).
-    If no match is found, respond with: "No furniture products found in the database."
+    Search for a product {query} in the attached Google Sheet.
+    Provide the most relevant product information based on the user query.
+    Your entire response must be valid JSON strictly following the schema:
+    {{
+      "products": [ {{"name": <str>, "price": <float>, "category": <str>, "description": <str|null>}} ],
+      "message": <str|null>
+    }}
+    Do not include any additional text, markdown, or explanations.
   expected_output: >
-    {
-      "products": [
-        {
-          "name": "string",
-          "price": "number",
-          "description": "string"
-        }
-      ],
-      "message": "string"
-    }
+    A JSON object with keys "products" and "message".
   agent: search_agent
-  output_format: json
 
 
-recommend_products:
-  description: >
-    Provide product recommendations based on user input and preferences {user_preference}.
-    Utilize the attached Google Sheet to analyze available inventory and ensure relevant suggestions.
-  expected_output: >
-    A curated list of recommended furniture products from the attached Google Sheet, 
-    with brief descriptions.
-  agent: recommendation_agent
+
+# recommend_products:
+#   description: >
+#     Analyze the user's search results and extract the category of the products. 
+#     If the category format required by the Furniture Recommendation Tool is not found, 
+#     you are smart enough to ensure you can convert the category into the correct format.
+#     Make a search for the products in the attached Google Sheet based on the category.
+#     e.g. if search results are category": "Living Room" then make a search for the 
+#     products in the attached Google Sheet based on the category "Living Room".
+#     Provide the products with brief descriptions and the reason for the recommendation.
+#     Utilize the attached Google Sheet to analyze available inventory and ensure relevant suggestions.
+#   expected_output: >
+#     A curated list of recommended furniture products from the attached Google Sheet, 
+#     with brief descriptions and the reason for the recommendation.
+#   agent: recommendation_agent
 
 
 interaction_task:
@@ -37,7 +37,7 @@ interaction_task:
     reverting previous choices, and confirming actions like adding items to the cart.
   expected_output: >
     - A dynamic and interactive conversation where users can refine their searches. 
-    - Sorted or filtered product lists based on user preferences. 
+    - Sorted or filtered product lists based on user query and the category of the products. 
     - Ability to revert to previous selections if requested. 
     - Confirmation of actions like adding items to the cart or proceeding to checkout.
   agent: interaction_agent
