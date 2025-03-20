@@ -2,32 +2,30 @@ search_products:
   description: >
     Search for a product {query} in the attached Google Sheet.
     Provide the most relevant product information based on the user query.
-    Your entire response must be valid JSON strictly following the schema:
-    {{
-      "products": [ {{"name": <str>, "price": <float>, "category": <str>, "description": <str|null>}} ],
-      "message": <str|null>
-    }}
     Do not include any additional text, markdown, or explanations.
   expected_output: >
     A JSON object with keys "products" and "message".
   agent: search_agent
 
-
-
-# recommend_products:
-#   description: >
-#     Analyze the user's search results and extract the category of the products. 
-#     If the category format required by the Furniture Recommendation Tool is not found, 
-#     you are smart enough to ensure you can convert the category into the correct format.
-#     Make a search for the products in the attached Google Sheet based on the category.
-#     e.g. if search results are category": "Living Room" then make a search for the 
-#     products in the attached Google Sheet based on the category "Living Room".
-#     Provide the products with brief descriptions and the reason for the recommendation.
-#     Utilize the attached Google Sheet to analyze available inventory and ensure relevant suggestions.
-#   expected_output: >
-#     A curated list of recommended furniture products from the attached Google Sheet, 
-#     with brief descriptions and the reason for the recommendation.
-#   agent: recommendation_agent
+recommend_products:
+  description: >
+    Extract the category from the search results and use it as a plain string 
+    (e.g., "Bedroom", "Living Room") to query the Furniture Recommendation Tool. 
+    Do not include any additional fields or metadata while passing the query.
+  expected_input: >
+    A single string representing the category, such as "Bedroom" or "Living".
+    Example: "Bedroom"
+  expected_output: >
+    A list of recommended furniture products in JSON format, along with brief 
+    descriptions and the reason for each recommendation.
+    Example:
+    {
+      "recommended_products": [
+        {"name": "Queen Size Bed", "price": 500, "category": "Bedroom", description": "A comfortable bed for two."}
+      ],
+      "message"="Products found successfully"
+    }
+  agent: recommendation_agent
 
 
 interaction_task:

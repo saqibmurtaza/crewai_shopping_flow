@@ -50,48 +50,44 @@ class SearchTool(BaseTool):
             })
 
 
-# class RecommendationToolInput(BaseModel):
-#     """Input schema for RecommendationTool."""
+class RecommendationToolInput(BaseModel):
+    """Input schema for RecommendationTool."""
     
-#     user_preference: str = Field(..., description="extracted category string from search results.")
+    query: str = Field(..., description="User query for furniture product category.")
 
-# class RecommendationTool(BaseTool):
-#     name: str = "Furniture Recommendation Tool"
-#     description: str = (
-#         "A tool to extract products category from search results and recommend products "
-#         "based on the category."
-#         "It retrieves relevant products and returns their details."
-#     )
-#     args_schema: Type[BaseModel] = RecommendationToolInput
+class RecommendationTool(BaseTool):
+    name: str= "Furniture Recommendation Tool"
+    description: str = (
+        "A tool to search for furniture products from a Google Sheet based on product category."
+        "It retrieves relevant products and returns their details."
+    )
+    args_schema = RecommendationToolInput
 
-#     def recommend_by_category(self, category_query: str) -> str:
-#         print(f"DEBUG: Category Query: {category_query}")
-#         try:
-#             # Connect to Google Sheets
-#             gc = gspread.service_account(filename=CREDENTIALS_PATH)
-#             sheet = gc.open("FurnitureProducts").sheet1
-#             products = sheet.get_all_records()
-#         except Exception as e:
-#             return f"Error fetching products from Google Sheets: {str(e)}"
-
-#         # Filter products by category (case-insensitive)
-#         matching_products = [
-#             product for product in products
-#             if category_query.lower() in product.get('category', '').lower()
-#         ]
+    def recommend_by_category(self, category: str) -> str:
+        print(f"DEBUG: Category: {category}")
+        try:
+            # Simulating Google Sheets connection and fetching data
+            gc = gspread.service_account(filename=CREDENTIALS_PATH)
+            sheet = gc.open("FurnitureProducts").sheet1
+            
+            # Fetch all records; ensure your sheet includes a 'name' column. <<<<<
+            all_products = sheet.get_all_records()
         
-#         if not matching_products:
-#             return json.dumps({
-#                 "data": [],
-#                 "formatted": "No furniture products found in the database."
-#             })
-        
-        
-#         return json.dumps({
-#             "data": matching_products
-#         })
+        except Exception as e:
+            return f"Error fetching products from Google Sheets: {str(e)}"
 
-#     def _run(self, user_preference: str) -> str:
-#         # For a simple category-based recommendation, treat the user preference as the category query.
-#         return self.recommend_by_category(user_preference)
+        # Filter products by category (case-insensitive)
+        matching_products = [
+            product for product in all_products if category.lower() in product["category"].lower()
+        ]
 
+        if matching_products:
+            return json.dumps({"recommended_products": matching_products})
+        else:
+            return json.dumps({
+                "recommended_products": [],
+                "formatted": "No furniture products found in the database."
+            })
+
+    def _run(self, query: str) -> str:
+        return self.recommend_by_category(query)

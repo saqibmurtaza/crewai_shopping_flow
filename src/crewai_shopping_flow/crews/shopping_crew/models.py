@@ -12,3 +12,7 @@ class SearchResults(BaseModel):
     products: List[Product]
     message: Optional[str] = None
 
+class RecommendationResults(BaseModel):
+    recommended_products: List[Product]
+    message: Optional[str] = None
+    
