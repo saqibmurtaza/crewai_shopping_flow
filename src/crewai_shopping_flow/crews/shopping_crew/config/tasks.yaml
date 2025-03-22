@@ -1,41 +1,41 @@
 search_products:
   description: >
     Search for a product {query} in the attached Google Sheet.
-    Provide the most relevant product information based on the user query.
-    Do not include any additional text, markdown, or explanations.
+    Provide the most relevant products and recommended products information 
+    based on the user query.
   expected_output: >
     A JSON object with keys "products" and "message".
   agent: search_agent
 
 recommend_products:
   description: >
-    Extract the category from the search results and use it as a plain string 
-    (e.g., "Bedroom", "Living Room") to query the Furniture Recommendation Tool. 
-    Do not include any additional fields or metadata while passing the query.
-  expected_input: >
-    A single string representing the category, such as "Bedroom" or "Living".
-    Example: "Bedroom"
+    Analyze the search tool's output, which includes both the search_products and 
+    recommended_products.
+    Once you find the relevant products and recommendations, do not start researching
+    from scratch.
+    Present the searched products and recommendations without adding new products.
+
   expected_output: >
-    A list of recommended furniture products in JSON format, along with brief 
-    descriptions and the reason for each recommendation.
-    Example:
-    {
-      "recommended_products": [
-        {"name": "Queen Size Bed", "price": 500, "category": "Bedroom", description": "A comfortable bed for two."}
-      ],
-      "message"="Products found successfully"
-    }
+    A JSON object with keys "products" and "recommended_products".
   agent: recommendation_agent
 
 
 interaction_task:
   description: >
-    Facilitate an interactive shopping experience by engaging in conversation with the user. 
-    Present product search results, assist with refining searches, sorting selections, 
-    reverting previous choices, and confirming actions like adding items to the cart.
+    Facilitate an interactive shopping experience by engaging in conversation with 
+    the user.
+    Present product search results, recommendations.
+    Do not add any additional products or recommendations, which you get from the
+    recommendation agent.
+    Your core task is to interact with the user and guide them through the shopping 
+    process without adding new products. 
+    Your next task, when you receive the results, is to assist user with 
+    refining searches, sorting selections, reverting previous choices, 
+    and confirming actions like adding items to the cart.
   expected_output: >
     - A dynamic and interactive conversation where users can refine their searches. 
-    - Sorted or filtered product lists based on user query and the category of the products. 
+    - Allow users to Sort or filter product lists based on results provided by the 
+      recommendation agent.
     - Ability to revert to previous selections if requested. 
     - Confirmation of actions like adding items to the cart or proceeding to checkout.
   agent: interaction_agent

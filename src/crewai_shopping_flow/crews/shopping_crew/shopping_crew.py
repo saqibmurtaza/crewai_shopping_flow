@@ -1,17 +1,16 @@
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai_shopping_flow.tools.custom_tool import (
-    SearchTool, RecommendationTool
-    # Other tools as needed...
+    SearchTool
+   # Other tools as needed...
 )
-from crewai_shopping_flow.crews.shopping_crew.models import SearchResults, RecommendationResults
+from crewai_shopping_flow.crews.shopping_crew.models import SearchResults
 
 @CrewBase
 class ShoppingCrew:
     """Shopping Crew to assist users from product search to checkout."""
     
     search_tool = SearchTool()
-    recommendation_tool = RecommendationTool()
 
     @agent
     def search_agent(self) -> Agent:
@@ -25,8 +24,6 @@ class ShoppingCrew:
     def recommendation_agent(self) -> Agent:
         return Agent(
             config=self.agents_config["recommendation_agent"],
-            tools=[self.recommendation_tool],
-            verbose=True,
         )
 
     @agent
@@ -49,7 +46,7 @@ class ShoppingCrew:
         return Task(
             config=self.tasks_config["recommend_products"],
             agent=self.recommendation_agent(),
-            output_type=RecommendationResults
+            output_type=SearchResults
         )
 
     @task
