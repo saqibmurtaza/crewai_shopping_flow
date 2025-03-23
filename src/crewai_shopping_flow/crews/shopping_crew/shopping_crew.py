@@ -38,6 +38,7 @@ class ShoppingCrew:
         return Task(
             config=self.tasks_config["search_products"],
             agent=self.search_agent(),
+            allow_delegation=False,
             output_type=SearchResults
         )
 

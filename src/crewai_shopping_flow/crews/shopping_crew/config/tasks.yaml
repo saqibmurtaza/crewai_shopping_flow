@@ -1,10 +1,22 @@
 search_products:
   description: >
     Search for a product {query} in the attached Google Sheet.
-    Provide the most relevant products and recommended products information 
-    based on the user query.
+    When searching for products:
+    1. Use the Furniture Search Tool to find products matching the user's query.
+    2. IMPORTANT: Always include BOTH the matching products AND the recommended 
+    products in your final answer.
+    3. Your final answer must be a valid JSON object with both "products" and 
+    "recommended_products" fields.
+    4. Do not modify or filter the tool's output - return exactly what the tool 
+    provides.
   expected_output: >
-    A JSON object with keys "products" and "message".
+    Ensure your final answer preserves all fields from the tool's response
+    Example of correct final answer format:
+    {
+      "products": [...],
+      "recommended_products": [...],
+      "message": "..."
+    }
   agent: search_agent
 
 recommend_products:
