@@ -1,10 +1,10 @@
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
-from crewai_shopping_flow.tools.custom_tool import (
+from crewai_flow.tools.custom_tool import (
     SearchTool
    # Other tools as needed...
 )
-from crewai_shopping_flow.crews.shopping_crew.models import SearchResults
+from crewai_flow.crews.shopping_crew.models import SearchResults
 
 @CrewBase
 class ShoppingCrew:
